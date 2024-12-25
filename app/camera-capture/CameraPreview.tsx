@@ -8,19 +8,20 @@ const CameraPreview = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
-  // カメラを起動する
+  // ★ ここがポイント：Vision API のレスポンスを表示するための state
+  const [serverResponse, setServerResponse] = useState<string | null>(null);
+
   const startCamera = async () => {
     try {
-      // iOS Safari でバックカメラを優先したい場合: facingMode: { ideal: 'environment' }
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }, 
+        video: { facingMode: 'environment' },
         audio: false,
       });
       setStream(mediaStream);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        videoRef.current.play(); // iOS Safari では、ユーザー操作がないと再生されないことに注意
+        await videoRef.current.play();
       }
     } catch (err) {
       console.error('カメラ起動に失敗しました', err);
@@ -28,7 +29,6 @@ const CameraPreview = () => {
     }
   };
 
-  // カメラを停止する
   const stopCamera = () => {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -36,44 +36,48 @@ const CameraPreview = () => {
     }
   };
 
-  // 画像をキャプチャする
   const captureImage = () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
-
     if (!context) return;
 
-    // canvas の大きさを video と同じに設定
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
-    // video の現在のフレームを canvas に描画
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // base64 データを取得
     const dataUrl = canvas.toDataURL('image/png');
     setCapturedImage(dataUrl);
   };
 
-  // キャプチャ画像をサーバーへ送信する例
+  // ★ サーバーへ送信したあと、サーバーからの結果を state に保存
   const sendImageToServer = async () => {
     if (!capturedImage) {
       alert('キャプチャした画像がありません。');
       return;
     }
+
+    // "data:image/png;base64," を取り除き、純粋な base64 データにする
+    const base64Data = capturedImage.replace(/^data:image\/\w+;base64,/, '');
+
     try {
-      const response = await fetch('https://example.com/api', {
+      const response = await fetch('/api/vision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: capturedImage }),
+        body: JSON.stringify({ image: base64Data }),
       });
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('サーバーエラー:', errorText);
         throw new Error('サーバーエラー');
       }
-      alert('送信に成功しました！');
+
+      // JSON を取得して文字列に変換（2スペースインデント）
+      const result = await response.json();
+      setServerResponse(JSON.stringify(result, null, 2));
     } catch (error) {
       console.error(error);
       alert('送信に失敗しました。');
@@ -84,14 +88,12 @@ const CameraPreview = () => {
     <div style={{ textAlign: 'center' }}>
       <h2>カメラプレビュー</h2>
 
-      {/* カメラ起動／停止ボタン */}
       {!stream ? (
         <button onClick={startCamera}>カメラ起動</button>
       ) : (
         <button onClick={stopCamera}>カメラ停止</button>
       )}
 
-      {/* video 要素 (ライブプレビュー) */}
       <div style={{ margin: '20px' }}>
         <video
           ref={videoRef}
@@ -100,21 +102,18 @@ const CameraPreview = () => {
             maxWidth: '400px',
             background: '#000',
           }}
-          // iOS Safari の場合、自動再生には "playsInline" や "muted" 等の属性設定が必要になる場合も
           playsInline
           muted
         />
       </div>
 
-      {/* キャプチャ用 canvas (非表示でもOK) */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-      {/* カメラ画像をキャプチャするボタン */}
       <button onClick={captureImage} disabled={!stream}>
         シャッター
       </button>
 
-      {/* キャプチャ結果のプレビュー */}
+      {/* キャプチャした画像のプレビュー */}
       {capturedImage && (
         <div style={{ margin: '20px' }}>
           <img
@@ -125,6 +124,23 @@ const CameraPreview = () => {
           <div>
             <button onClick={sendImageToServer}>画像を送信</button>
           </div>
+        </div>
+      )}
+
+      {/* ★ サーバーからのレスポンスを表示する領域 */}
+      {serverResponse && (
+        <div style={{ textAlign: 'left', margin: '20px auto', maxWidth: '600px' }}>
+          <h3>Vision API レスポンス</h3>
+          <pre
+            style={{
+              whiteSpace: 'pre-wrap',
+              background: '#f5f5f5',
+              padding: '10px',
+              borderRadius: '8px',
+            }}
+          >
+            {serverResponse}
+          </pre>
         </div>
       )}
     </div>
