@@ -59,7 +59,6 @@ const CameraPreview = () => {
       return;
     }
 
-    // "data:image/png;base64," を取り除き、純粋な base64 データにする
     const base64Data = capturedImage.replace(/^data:image\/\w+;base64,/, '');
 
     try {
@@ -72,17 +71,17 @@ const CameraPreview = () => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('サーバーエラー:', errorText);
-        throw new Error('サーバーエラー');
+        throw new Error(`サーバーエラー: ${errorText}`);
       }
 
-      // JSON を取得して文字列に変換（2スペースインデント）
       const result = await response.json();
       setServerResponse(JSON.stringify(result, null, 2));
-    } catch (error) {
-      console.error(error);
-      alert('送信に失敗しました。');
+    } catch (error: any) {
+      console.error('送信エラー:', error);
+      alert(`送信に失敗しました。\nエラー詳細: ${error.message}`);
     }
   };
+
 
   return (
     <div style={{ textAlign: 'center' }}>
